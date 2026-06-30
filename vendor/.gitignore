@@ -1,0 +1,10 @@
+# Bonk's proprietary source + generated artifacts — NEVER commit these.
+# They are local build inputs only.
+alpha2s.js
+Box2DModuleGJMod.js
+bonk-core.mjs
+box2d.esm.js
+
+# keep this file
+!.gitignore
+!README.md

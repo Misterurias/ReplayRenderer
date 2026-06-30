@@ -1,0 +1,26 @@
+{
+  "name": "replay-renderer",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Deterministic bonk.io replay renderer — trail thumbnails + live playback.",
+  "scripts": {
+    "demo": "node server/demo-thumb.mjs",
+    "build:core": "node server/build-core.mjs ./vendor/alpha2s.js ./vendor/bonk-core.mjs",
+    "build:box2d": "node server/wrap-box2d.mjs ./vendor/Box2DModuleGJMod.js ./vendor/box2d.esm.js",
+    "dump": "node server/dump-one.mjs",
+    "render": "node server/render-one.mjs ./one.bin",
+    "export:one": "node server/export-one-json.mjs",
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dump:id": "node server/dump-replay.mjs",
+    "api": "node server/dev-api.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "express": "^5.2.1",
+    "pg": "^8.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vite": "^8.1.0"
+  }
+}

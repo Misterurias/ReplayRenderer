@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Replay Renderer Dev</title>
+
+    <!-- Bonk Fonts -->
+    <style>
+      @font-face {
+        font-family: "Bonk";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptmed";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptbook";
+        src: url("/vendor/fonts/fptbook.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptb";
+        src: url("/vendor/fonts/fptb.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "fptl";
+        src: url("/vendor/fonts/fptl.otf") format("opentype");
+      }
+
+      @font-face {
+        font-family: "futurept_medium";
+        src: url("/vendor/fonts/fptmed.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      @font-face {
+        font-family: "futurept_book";
+        src: url("/vendor/fonts/fptbook.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #0f172a;
+        color: white;
+        font-family: "Bonk", "fptmed", sans-serif;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+
+      * {
+        box-sizing: border-box;
+        font-family: inherit;
+      }
+    </style>
+
+    <!-- Bonk Runtime -->
+    <script src="/vendor/pixi-legacy-540.min.js"></script>
+    <script src="/vendor/pixi-filters-311.js"></script>
+    <script src="/vendor/Tween.js"></script>
+
+    <!-- Audio -->
+    <script src="/vendor/howler.min.js"></script>
+    <script src="/vendor/howler.spatial.min.js"></script>
+
+    <!-- Embedded SVGs / Sounds -->
+    <script src="/vendor/GameResources.js"></script>
+  </head>
+
+  <body>
+    <!-- Elements expected by Bonk -->
+    <div id="pagecontainer" style="display:none"></div>
+    <div id="bonkiocontainer" style="display:none"></div>
+    <div id="pretty_top_bar" style="display:none"></div>
+
+    <div id="xpbarcontainer" style="display:none"></div>
+    <div id="xpbar" style="display:none"></div>
+    <div id="ingamewinner" style="display:none"></div>
+    <div id="ingamecountdown" style="display:none"></div>
+    <div id="ingamemapcredit" style="display:none"></div>
+
+    <!-- React -->
+    <div id="root"></div>
+
+    <script type="module" src="/browser/dev.jsx"></script>
+  </body>
+</html>
