@@ -138,7 +138,10 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 0;
 }
+
+.player-shell:fullscreen > h2 { display: none; }  /* hide the "Replay 102459" title in fs */
 
 .empty-player {
   height: 500px;
@@ -154,6 +157,33 @@ button {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.replay-toolbar--fs {
+  position: fixed;        /* relative to the fullscreen element, fills the screen */
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;    /* above the scaled canvas */
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 10px 16px;
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.25s ease;
+}
+
+.replay-toolbar--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-shell:fullscreen {
+  cursor: default;
+}
+
+.player-shell:fullscreen:has(.replay-toolbar--hidden) {
+  cursor: none;
 }
 
 .icon-btn {
@@ -184,3 +214,8 @@ button {
   min-width: 92px;
   text-align: right;
 }
+
+.export-overlay { position:absolute; top:12px; right:12px; background:rgba(15,23,42,.9);
+  padding:10px 14px; border-radius:10px; display:flex; gap:10px; align-items:center; z-index:10; }
+.export-bar { width:140px; height:6px; background:#1e293b; border-radius:999px; overflow:hidden; }
+.export-bar > div { height:100%; background:var(--teal); transition:width .1s linear; }

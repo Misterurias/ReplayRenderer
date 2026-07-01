@@ -8,3 +8,7 @@ box2d.esm.js
 # keep this file
 !.gitignore
 !README.md
+
+# Folders
+node_modules/
+dist/
