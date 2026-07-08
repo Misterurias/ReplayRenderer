@@ -4,11 +4,13 @@ alpha2s.js
 Box2DModuleGJMod.js
 bonk-core.mjs
 box2d.esm.js
+.DS_Store
 
 # keep this file
 !.gitignore
 !README.md
 
 # Folders
-node_modules/
+node_modules/*
 dist/
+
