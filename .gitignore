@@ -11,6 +11,8 @@ box2d.esm.js
 !README.md
 
 # Folders
-node_modules/*
+node_modules/
+.DS_Store
+**/.DS_Store
 dist/
 
