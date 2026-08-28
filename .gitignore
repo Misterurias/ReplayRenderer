@@ -1,9 +1,11 @@
-# Bonk's proprietary source + generated artifacts — NEVER commit these.
-# They are local build inputs only.
+# Bonk's proprietary source — NEVER commit these. Local build inputs only.
+# (bonk-core.mjs and box2d.esm.js are the GENERATED outputs derived from
+# these two, produced by `npm run build:core` / `npm run build:box2d` — they
+# contain no raw proprietary source themselves and ARE committed, since
+# Railway's build needs them and can't regenerate them without the two
+# ignored files below, which intentionally aren't pushed anywhere.)
 alpha2s.js
 Box2DModuleGJMod.js
-bonk-core.mjs
-box2d.esm.js
 .DS_Store
 
 # keep this file
@@ -15,4 +17,3 @@ node_modules/
 .DS_Store
 **/.DS_Store
 dist/
-

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from "react";
 import { loadBonkCore } from "../core/physics-loader.js";
 import { normalizeReplay } from "../core/decode.js";
 import { createInputResolver } from "../core/inputs.js";
@@ -8,14 +8,16 @@ import { GIFEncoder, quantize, applyPalette } from "gifenc";
 const STEP_DURATION = 30;
 const STEPS_PER_SEC = 30;
 
-export default function ReplayPlayer({
+const ReplayPlayer = forwardRef(function ReplayPlayer({
   blob,
   box2d,
   decodeReplayData,
   width = 730,
   height = 500,
   fullscreenTargetId,
-}) {
+  onExportStateChange,
+}, ref) {
+  const playerRootRef = useRef(null);
   const containerRef = useRef(null);
   const engine = useRef(null);
   const hideTimer = useRef(null);
@@ -58,26 +60,40 @@ export default function ReplayPlayer({
     renderAt(Math.floor(e.playhead || 0));
   }, [isFs, ready, width, height]);
 
-  // ── YouTube-style auto-hide controls in fullscreen ────────────────────────
+  // ── YouTube-style show-on-hover, hide-on-leave controls ───────────────────
+  // Applies in both windowed and fullscreen mode: controls appear on mouse
+  // movement over the player and auto-hide after a short idle period, but
+  // also hide immediately the moment the mouse actually leaves the player
+  // area — in windowed mode especially, the mouse is usually just off doing
+  // something else on the page, not idling inside the video, so waiting out
+  // the same idle timer there felt sluggish compared to hiding right away.
   useEffect(() => {
-    if (!isFs) {
-      setControlsVisible(true);
-      return;
-    }
-
-    const shell = document.getElementById(fullscreenTargetId);
+    const root = playerRootRef.current;
+    // In fullscreen the OS-level fullscreen surface is `fullscreenTargetId`'s
+    // element (what requestFullscreen() was actually called on), which can
+    // extend beyond this component's own root — track both so movement
+    // anywhere in the fullscreen view keeps controls alive.
+    const fsShell = isFs ? document.getElementById(fullscreenTargetId) : null;
 
     const show = () => {
       setControlsVisible(true);
       clearTimeout(hideTimer.current);
       hideTimer.current = setTimeout(() => setControlsVisible(false), 2500);
     };
+    const hideNow = () => {
+      clearTimeout(hideTimer.current);
+      setControlsVisible(false);
+    };
 
     show();
-    shell?.addEventListener("mousemove", show);
+    root?.addEventListener("mousemove", show);
+    root?.addEventListener("mouseleave", hideNow);
+    fsShell?.addEventListener("mousemove", show);
 
     return () => {
-      shell?.removeEventListener("mousemove", show);
+      root?.removeEventListener("mousemove", show);
+      root?.removeEventListener("mouseleave", hideNow);
+      fsShell?.removeEventListener("mousemove", show);
       clearTimeout(hideTimer.current);
     };
   }, [isFs, fullscreenTargetId]);
@@ -711,14 +727,14 @@ export default function ReplayPlayer({
     };
   }, [ready, playing]);
 
-  function onScrub(value) {
+  function seekToStep(target) {
     const e = engine.current;
     if (!e) return;
 
     e.playedManualSounds = new Set();
 
-    const target = Number(value);
-    e.playhead = target;
+    const clamped = Math.max(0, Math.min(target, endStep));
+    e.playhead = clamped;
 
     resetAudio(e.core);
 
@@ -726,20 +742,119 @@ export default function ReplayPlayer({
       e.core.game.soundManager = new e.core.SoundHandler();
     }
 
-    ensureSimTo(target + 1);
+    ensureSimTo(clamped + 1);
 
-    if (e.steps[target]) {
-      renderAt(target, 0);
+    if (e.steps[clamped]) {
+      renderAt(clamped, 0);
     }
 
-    setStep(target);
+    setStep(clamped);
+    return clamped;
   }
 
+  function onScrub(value) {
+    seekToStep(Number(value));
+  }
+
+  // Shared by the play/pause button, click-on-video, and the space bar.
+  function togglePlayPause() {
+    const e = engine.current;
+    if (!e || !ready) return;
+
+    if (e.playhead >= (e.replay.es || 0)) {
+      resetReplayToStart({ autoplay: true });
+      return;
+    }
+
+    setPlaying((p) => !p);
+  }
+
+  // Frame-by-frame when paused (arrow keys), or a 5s skip when playing —
+  // matches the common YouTube-style convention (arrow-skip while playing
+  // keeps playing; a single-frame nudge while paused stays paused for
+  // precise scrubbing).
+  function stepBy(deltaSteps) {
+    const e = engine.current;
+    if (!e || !ready) return;
+    seekToStep(Math.floor(e.playhead ?? step) + deltaSteps);
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      const target =
+        document.getElementById(fullscreenTargetId) || containerRef.current;
+      target?.requestFullscreen?.();
+    }
+  }
+
+  // ── Keyboard shortcuts: space (play/pause), arrows (seek/frame-step), f
+  //    (fullscreen) — standard video-player conventions. Ignored while a
+  //    text input elsewhere on the page has focus, so this doesn't hijack
+  //    typing in the search box.
+  useEffect(() => {
+    function isTypingTarget(el) {
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+    }
+
+    function onKeyDown(ev) {
+      if (!ready || isTypingTarget(document.activeElement)) return;
+
+      switch (ev.key) {
+        case " ":
+        case "Spacebar":
+          if (ev.repeat) return; // don't rapid-fire toggle while held
+          ev.preventDefault();
+          togglePlayPause();
+          break;
+        case "ArrowRight":
+          ev.preventDefault();
+          stepBy(playing ? STEPS_PER_SEC * 5 : 1);
+          break;
+        case "ArrowLeft":
+          ev.preventDefault();
+          stepBy(playing ? -STEPS_PER_SEC * 5 : -1);
+          break;
+        case "f":
+        case "F":
+          if (ev.repeat) return;
+          ev.preventDefault();
+          toggleFullscreen();
+          break;
+        default:
+          break;
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ready, playing, endStep]);
+
   const isExporting = exportPct !== null || gifExportPct !== null || exporting;
+
+  // Exposes the two export actions to the parent, which renders their
+  // buttons entirely outside this component (see dev.jsx's action-row) —
+  // export isn't a video-playback control, so it shouldn't live inside the
+  // player's own DOM/visual frame at all. onExportStateChange keeps the
+  // parent's button disabled/labeled correctly without needing to lift the
+  // underlying export state itself, which is entangled with the internal
+  // engine ref.
+  useImperativeHandle(ref, () => ({
+    exportMp4: () => exportReplayMp4(),
+    exportGif: () => exportReplayGif(),
+  }));
+
+  useEffect(() => {
+    onExportStateChange?.({ isExporting, exportPct, gifExportPct });
+  }, [isExporting, exportPct, gifExportPct]);
 
   return (
     <div
       className="replay-player"
+      ref={playerRootRef}
       style={{
         width: isFs ? "100vw" : `${width}px`,
         minWidth: isFs ? 0 : `${width}px`,
@@ -749,6 +864,8 @@ export default function ReplayPlayer({
       <div
         id="bgreplay"
         ref={containerRef}
+        onClick={togglePlayPause}
+        title={playing ? "Pause" : "Play"}
         style={{
           width: isFs ? "100vw" : `${width}px`,
           height: isFs ? "100vh" : `${height}px`,
@@ -765,6 +882,7 @@ export default function ReplayPlayer({
           overflow: "hidden",
           position: "relative",
           flex: "0 0 auto",
+          cursor: "pointer",
           // bonk renders its canvas at the size we feed via offsetWidth/Height;
           // we just center that canvas. No CSS scaling = no blur.
           display: "flex",
@@ -792,23 +910,14 @@ export default function ReplayPlayer({
       )}
 
       <div
-        className={`replay-toolbar ${isFs ? "replay-toolbar--fs" : ""} ${
-          isFs && !controlsVisible ? "replay-toolbar--hidden" : ""
+        className={`replay-toolbar ${isFs ? "replay-toolbar--fs" : "replay-toolbar--overlay"} ${
+          !controlsVisible ? "replay-toolbar--hidden" : ""
         }`}
       >
         <button
           className="icon-btn"
           title={playing ? "Pause" : "Play"}
-          onClick={() => {
-            const e = engine.current;
-
-            if (e && e.playhead >= (e.replay.es || 0)) {
-              resetReplayToStart({ autoplay: true });
-              return;
-            }
-
-            setPlaying((p) => !p);
-          }}
+          onClick={togglePlayPause}
           disabled={!ready}
         >
           {playing ? "⏸" : "▶"}
@@ -841,41 +950,16 @@ export default function ReplayPlayer({
         <button
           className="icon-btn"
           title="Fullscreen"
-          onClick={() => {
-            if (document.fullscreenElement) {
-              document.exitFullscreen?.();
-            } else {
-              const target =
-                document.getElementById(fullscreenTargetId) ||
-                containerRef.current;
-              target?.requestFullscreen?.();
-            }
-          }}
+          onClick={toggleFullscreen}
           disabled={!ready}
         >
           ⛶
-        </button>
-
-        <button
-          className="icon-btn"
-          title="Export video"
-          onClick={() => exportReplayMp4()}
-          disabled={!ready || isExporting}
-        >
-          {exportPct !== null ? "…" : "⬇"}
-        </button>
-
-        <button
-          className="icon-btn"
-          title="Export GIF"
-          onClick={() => exportReplayGif()}
-          disabled={!ready || isExporting}
-        >
-          {gifExportPct !== null ? "…" : "GIF"}
         </button>
       </div>
 
       {!ready && <div>Loading replay…</div>}
     </div>
   );
-}
+});
+
+export default ReplayPlayer;

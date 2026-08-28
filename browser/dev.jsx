@@ -5,6 +5,14 @@ import box2d from "../vendor/box2d.esm.js";
 import ReplayPlayer from "./ReplayPlayer.jsx";
 import "./dev.css";
 
+// In local dev, the API runs as a separate process on its own port (see
+// server/dev-api.mjs, started via `npm run api`). In production, a single
+// server (server/prod-server.mjs) serves both the built frontend and the
+// /api/* routes from the same origin, so relative paths are correct and no
+// CORS is needed at all. import.meta.env.DEV is Vite's own dev/build flag —
+// true under `vite`/`npm run dev`, false in a `vite build` production bundle.
+const API_BASE = import.meta.env.DEV ? "http://127.0.0.1:5174" : "";
+
 globalThis.peerjs ??= {
   peerjs: {
     Peer: class MockPeer {
@@ -273,7 +281,7 @@ function MapThumbnail({ mapid }) {
   return (
     <img
       className="result-thumb"
-      src={`http://127.0.0.1:5174/api/map/${mapid}/thumbnail.svg`}
+      src={`${API_BASE}/api/map/${mapid}/thumbnail.svg`}
       alt=""
       loading="lazy"
       onError={() => setFailed(true)}
@@ -293,6 +301,44 @@ function App() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
+
+  // Export (video/GIF) actions and state live in ReplayPlayer (they need the
+  // internal engine ref), but their buttons render here, structurally
+  // outside the player's own DOM — export isn't a playback control, so it
+  // shouldn't visually live inside the video frame. playerRef calls the
+  // exposed exportMp4/exportGif actions; exportState mirrors their
+  // in-progress percentages for the buttons' label/disabled state.
+  const playerRef = useRef(null);
+  const [exportState, setExportState] = useState({
+    isExporting: false,
+    exportPct: null,
+    gifExportPct: null,
+  });
+
+  // Scroll position management between the results grid and the replay
+  // page. This app toggles between the two views via `replay` state rather
+  // than real client-side routing, so the browser has no built-in memory of
+  // scroll position across that switch — whether it happened to land near
+  // the top or not was just incidental, depending on the relative height of
+  // whichever view was showing at the moment. scrollPosRef remembers where
+  // the results grid was scrolled to right when a replay is opened;
+  // restoreScrollRef flags that the next transition back to the results
+  // view (specifically via the explicit "Back to results" button, not a
+  // fresh search) should restore that position instead of leaving scroll
+  // wherever it incidentally ends up.
+  const scrollPosRef = useRef(0);
+  const restoreScrollRef = useRef(false);
+
+  useEffect(() => {
+    if (replay) {
+      // Opening a replay always lands at the top, so the player is in view
+      // regardless of where the results grid was scrolled to.
+      window.scrollTo(0, 0);
+    } else if (restoreScrollRef.current) {
+      restoreScrollRef.current = false;
+      window.scrollTo(0, scrollPosRef.current);
+    }
+  }, [replay]);
 
   const meta = useMemo(() => (replay ? extractMeta(replay.decoded) : null), [replay]);
   const players = useMemo(() => (replay ? extractPlayers(replay.decoded) : []), [replay]);
@@ -336,7 +382,7 @@ function App() {
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:5174/api/search?q=${encodeURIComponent(query)}&field=${searchField}&page=${targetPage}`
+        `${API_BASE}/api/search?q=${encodeURIComponent(query)}&field=${searchField}&page=${targetPage}`
       );
 
       if (!res.ok) {
@@ -367,12 +413,13 @@ function App() {
   }
 
   async function loadReplay(item) {
+    scrollPosRef.current = window.scrollY;
     setError(null);
     setLoadingReplay(true);
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:5174/api/replay/${item.id}?cycle=${item.cycle}`
+        `${API_BASE}/api/replay/${item.id}?cycle=${item.cycle}`
       );
 
       if (!res.ok) {
@@ -455,17 +502,25 @@ function App() {
 
       {!loadingReplay && replay && meta ? (
         <main className="page replay-page">
-          <button className="back-link" onClick={() => setReplay(null)}>
+          <button
+            className="back-link"
+            onClick={() => {
+              restoreScrollRef.current = true;
+              setReplay(null);
+            }}
+          >
             ← Back to results
           </button>
 
           <div className="player-shell" id="player-shell">
             <ReplayPlayer
               key={`${replay.cycle}:${replay.id}`}
+              ref={playerRef}
               blob={replay.decoded}
               box2d={box2d}
               decodeReplayData={identityDecode}
               fullscreenTargetId="player-shell"
+              onExportStateChange={setExportState}
             />
           </div>
 
@@ -484,6 +539,24 @@ function App() {
               </button>
               <button className="ghost-btn" onClick={downloadJson}>
                 Download
+              </button>
+              <button
+                className="ghost-btn"
+                onClick={() => playerRef.current?.exportMp4()}
+                disabled={exportState.isExporting}
+              >
+                {exportState.exportPct !== null
+                  ? `Exporting video… ${exportState.exportPct}%`
+                  : "Export video"}
+              </button>
+              <button
+                className="ghost-btn"
+                onClick={() => playerRef.current?.exportGif()}
+                disabled={exportState.isExporting}
+              >
+                {exportState.gifExportPct !== null
+                  ? `Exporting GIF… ${exportState.gifExportPct}%`
+                  : "Export GIF"}
               </button>
             </div>
           </div>

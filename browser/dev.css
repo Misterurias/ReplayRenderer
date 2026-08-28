@@ -190,7 +190,12 @@ button {
 
 .result-thumb {
   width: 100%;
-  aspect-ratio: 16 / 10;
+  /* Matches bonk's real 730x500 game viewport exactly (see
+     renderMapThumbnailSvg.mjs) — object-fit: cover only crops when this box's
+     aspect ratio differs from the SVG's own viewBox aspect, so keeping them
+     identical means every thumbnail displays uncropped regardless of what
+     content sits near the map's edges. */
+  aspect-ratio: 73 / 50;
   object-fit: cover;
   background: var(--panel2);
   display: block;
@@ -419,24 +424,63 @@ button {
 /* ─── Replay toolbar (fullscreen controls, rendered by ReplayPlayer) ──────── */
 
 .replay-toolbar {
-  margin-top: 12px;
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+/* Docks the primary transport controls (play/pause, scrub, fullscreen) to
+   the bottom edge of the video itself, inside its bounding box — matching
+   how YouTube/Vimeo/etc. treat controls as part of the player rather than a
+   separate strip underneath it. The gradient scrim keeps the buttons and
+   time label legible over whatever's playing without a solid backing plate
+   that would hide more of the gameplay than necessary. */
+.replay-toolbar--overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 20px 14px 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0));
+  border-radius: 0 0 8px 8px;
 }
 
 .replay-toolbar--fs {
   position: fixed;
   bottom: 24px;
   left: 50%;
+  right: auto;
   transform: translateX(-50%);
   z-index: 2147483647;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(8px);
-  padding: 10px 16px;
-  border-radius: 14px;
+  padding: 14px 22px;
+  border-radius: 16px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   transition: opacity 0.25s ease;
+  gap: 16px;
+  width: min(640px, 70vw);
+}
+
+/* Bigger hit targets and more legible text at fullscreen viewing distance —
+   the windowed controls are fine at normal size since they're viewed up
+   close, but fullscreen is typically viewed from further away (or just
+   fills more of your attention), so undersized controls there feel fiddly. */
+.replay-toolbar--fs .icon-btn {
+  width: 52px;
+  height: 46px;
+  font-size: 22px;
+  border-radius: 10px;
+}
+
+.replay-toolbar--fs .time-label {
+  font-size: 16px;
+  min-width: 120px;
+}
+
+.replay-toolbar--fs .scrubber {
+  height: 6px;
 }
 
 .replay-toolbar--hidden {

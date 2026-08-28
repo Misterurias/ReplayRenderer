@@ -12,15 +12,20 @@
     "export:one": "node server/export-one-json.mjs",
     "dev": "vite --host 127.0.0.1 --port 5173",
     "dump:id": "node server/dump-replay.mjs",
-    "api": "node server/dev-api.mjs"
+    "api": "node server/dev-api.mjs",
+    "build": "vite build",
+    "start": "node server/prod-server.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.0",
     "@vitejs/plugin-react": "^6.0.3",
+    "bytebuffer": "^5.0.1",
     "express": "^5.2.1",
     "gifenc": "^1.0.3",
+    "lz-string": "^1.5.0",
     "mp4-muxer": "^5.2.2",
     "pg": "^8.22.0",
+    "pson": "^2.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "vite": "^8.1.0"
