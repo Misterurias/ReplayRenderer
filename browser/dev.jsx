@@ -538,7 +538,7 @@ function App() {
                 Copy JSON
               </button>
               <button className="ghost-btn" onClick={downloadJson}>
-                Download
+                Download JSON
               </button>
               <button
                 className="ghost-btn"
