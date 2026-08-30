@@ -16,6 +16,45 @@ const gunzip = promisify(zlib.gunzip);
 
 const PAGE_SIZE = 25;
 
+// Maps DB/driver errors to a safe, plain-language message for the client.
+// Never forward err.message directly — it can contain SQLSTATE text,
+// column/table names, parameter counts, etc., which are meaningless (or
+// worse, informative to an attacker) for an end user. The real error is
+// still logged server-side by each route before calling this.
+function sendDbError(res, err, fallbackMessage) {
+  let message = fallbackMessage;
+  let status = 500;
+
+  switch (err.code) {
+    // invalid_text_representation — e.g. a value that can't be cast/compared
+    // the way the query expects (bad id format, etc.)
+    case "22P02":
+      message = "That doesn't look like a valid value for this request.";
+      status = 400;
+      break;
+    // indeterminate_datatype — Postgres couldn't infer a type for a bound
+    // parameter; almost always a query-construction bug, not bad user input.
+    case "42P18":
+      message = "That request couldn't be understood. Try again or use a different search.";
+      status = 400;
+      break;
+    // query_canceled — e.g. statement_timeout hit on an expensive query.
+    case "57014":
+      message = "That took too long to run. Try a more specific search.";
+      status = 504;
+      break;
+    // connection-related — DB unreachable, pool exhausted, etc.
+    case "ECONNREFUSED":
+    case "ETIMEDOUT":
+    case "53300":
+      message = "This is temporarily unavailable. Please try again shortly.";
+      status = 503;
+      break;
+  }
+
+  return res.status(status).json({ error: message });
+}
+
 export function registerApiRoutes(app, pool) {
   app.get("/api/replay/:id", async (req, res) => {
     const { id } = req.params;
@@ -48,7 +87,7 @@ export function registerApiRoutes(app, pool) {
       });
     } catch (err) {
       console.error("GET /api/replay/:id failed:", err);
-      return res.status(500).json({ error: err.message });
+      return sendDbError(res, err, "We couldn't load that replay. Please try again.");
     }
   });
 
@@ -102,30 +141,47 @@ export function registerApiRoutes(app, pool) {
     // interpreted as a SQL wildcard (a bare "%" was matching every row).
     // Backslash is escaped first so we don't double-escape the escapes we
     // just inserted. Paired with `ESCAPE '\'` on every ILIKE clause below.
-    // $1 = escaped value (ILIKE clauses), $2 = raw value (exact-match clauses).
     const likeSafeQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 
     try {
+      // Build the WHERE clause and its parameter list together so the
+      // placeholder count in the SQL text always matches the values array
+      // passed to pg — a mismatch (e.g. referencing only $2 while never
+      // using $1) makes Postgres reject the query outright, either with
+      // "bind message supplies N parameters, but prepared statement
+      // requires M" or, when a placeholder is skipped entirely, "could
+      // not determine data type of parameter $N" (Postgres can't infer a
+      // type for a parameter that never appears anywhere in the query text
+      // — this was exactly the "id"/"mapid" search bug: the query only
+      // referenced $2, so $1 had no context to infer a type from).
       let whereClause;
+      let baseParams;
       switch (field) {
         case "username":
+          baseParams = [likeSafeQ];
           whereClause = `rp.username ILIKE '%' || $1 || '%' ESCAPE '\\'`;
           break;
         case "id":
-          whereClause = `r.id::text = $2`;
+          baseParams = [q];
+          whereClause = `r.id::text = $1`;
           break;
         case "mapid":
-          whereClause = `r.mapid::text = $2`;
+          baseParams = [q];
+          whereClause = `r.mapid::text = $1`;
           break;
         case "mapname":
+          baseParams = [likeSafeQ];
           whereClause = `m.name ILIKE '%' || $1 || '%' ESCAPE '\\'`;
           break;
         default:
+          // $1 = raw value, reused for both exact-match columns.
+          // $2 = escaped value, reused for both ILIKE columns.
+          baseParams = [q, likeSafeQ];
           whereClause = `
-            r.id::text = $2
-            OR r.mapid::text = $2
-            OR rp.username ILIKE '%' || $1 || '%' ESCAPE '\\'
-            OR m.name ILIKE '%' || $1 || '%' ESCAPE '\\'
+            r.id::text = $1
+            OR r.mapid::text = $1
+            OR rp.username ILIKE '%' || $2 || '%' ESCAPE '\\'
+            OR m.name ILIKE '%' || $2 || '%' ESCAPE '\\'
           `;
       }
 
@@ -152,7 +208,7 @@ export function registerApiRoutes(app, pool) {
           WHERE ${whereClause}
         ) sub
         `,
-        [likeSafeQ, q]
+        baseParams
       );
 
       const total = countResult.rows[0]?.count ?? 0;
@@ -184,9 +240,9 @@ export function registerApiRoutes(app, pool) {
         WHERE ${whereClause}
         GROUP BY r.cycle, r.id, r.mapid, m.name, r.fetched_at
         ORDER BY r.fetched_at DESC
-        LIMIT $3 OFFSET $4
+        LIMIT $${baseParams.length + 1} OFFSET $${baseParams.length + 2}
         `,
-        [likeSafeQ, q, PAGE_SIZE, offset]
+        [...baseParams, PAGE_SIZE, offset]
       );
 
       return res.json({
@@ -198,7 +254,7 @@ export function registerApiRoutes(app, pool) {
       });
     } catch (err) {
       console.error("GET /api/search failed:", err);
-      return res.status(500).json({ error: err.message });
+      return sendDbError(res, err, "Something went wrong running that search. Please try again.");
     }
   });
 }
