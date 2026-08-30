@@ -97,27 +97,35 @@ export function registerApiRoutes(app, pool) {
       return res.json({ results: [], page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 0 });
     }
 
+    // Escape LIKE/ILIKE metacharacters in the raw user input so a literal
+    // "%" or "_" is matched as a literal character instead of being
+    // interpreted as a SQL wildcard (a bare "%" was matching every row).
+    // Backslash is escaped first so we don't double-escape the escapes we
+    // just inserted. Paired with `ESCAPE '\'` on every ILIKE clause below.
+    // $1 = escaped value (ILIKE clauses), $2 = raw value (exact-match clauses).
+    const likeSafeQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
     try {
       let whereClause;
       switch (field) {
         case "username":
-          whereClause = `rp.username ILIKE '%' || $1 || '%'`;
+          whereClause = `rp.username ILIKE '%' || $1 || '%' ESCAPE '\\'`;
           break;
         case "id":
-          whereClause = `r.id::text = $1`;
+          whereClause = `r.id::text = $2`;
           break;
         case "mapid":
-          whereClause = `r.mapid::text = $1`;
+          whereClause = `r.mapid::text = $2`;
           break;
         case "mapname":
-          whereClause = `m.name ILIKE '%' || $1 || '%'`;
+          whereClause = `m.name ILIKE '%' || $1 || '%' ESCAPE '\\'`;
           break;
         default:
           whereClause = `
-            r.id::text = $1
-            OR r.mapid::text = $1
-            OR rp.username ILIKE '%' || $1 || '%'
-            OR m.name ILIKE '%' || $1 || '%'
+            r.id::text = $2
+            OR r.mapid::text = $2
+            OR rp.username ILIKE '%' || $1 || '%' ESCAPE '\\'
+            OR m.name ILIKE '%' || $1 || '%' ESCAPE '\\'
           `;
       }
 
@@ -144,7 +152,7 @@ export function registerApiRoutes(app, pool) {
           WHERE ${whereClause}
         ) sub
         `,
-        [q]
+        [likeSafeQ, q]
       );
 
       const total = countResult.rows[0]?.count ?? 0;
@@ -176,9 +184,9 @@ export function registerApiRoutes(app, pool) {
         WHERE ${whereClause}
         GROUP BY r.cycle, r.id, r.mapid, m.name, r.fetched_at
         ORDER BY r.fetched_at DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $3 OFFSET $4
         `,
-        [q, PAGE_SIZE, offset]
+        [likeSafeQ, q, PAGE_SIZE, offset]
       );
 
       return res.json({
